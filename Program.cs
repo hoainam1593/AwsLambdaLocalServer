@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using System.Reflection;
 using System.Text;
 
 namespace AwsLambdaLocalServer
@@ -6,11 +7,20 @@ namespace AwsLambdaLocalServer
     internal class Program
     {
         const string hostURL = "http://localhost:1993/";
+        const string funcDllPathForTesting = "E:\\unity-projects\\project-8-server\\bin\\Release\\net6.0\\publish\\project-8-server.dll";
+
+        static string funcDllPath;
+        static string funcDllFolder;
+        static Assembly funcDll;
 
         static void Main(string[] args)
         {
+            AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
+            LoadFuncDll();
             RunServer();
         }
+
+        #region http server
 
         static void RunServer()
         {
@@ -53,5 +63,25 @@ namespace AwsLambdaLocalServer
             resStream.Write(resMsgAsBytes, 0, resMsgAsBytes.Length);
             resStream.Close();
         }
+
+        #endregion
+
+        #region load dll
+
+        static Assembly? OnAssemblyResolve(object? sender, ResolveEventArgs args)
+        {
+            var fullname = new AssemblyName(args.Name);
+            var assemblyPath = Path.Combine(funcDllFolder, $"{fullname.Name}.dll");
+            return Assembly.LoadFile(assemblyPath);
+        }
+
+        static void LoadFuncDll()
+        {
+            funcDllPath = funcDllPathForTesting;
+            funcDllFolder = Directory.GetParent(funcDllPath).FullName;
+            funcDll = Assembly.LoadFile(funcDllPath);
+        }
+
+        #endregion
     }
 }
