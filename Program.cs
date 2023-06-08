@@ -1,6 +1,6 @@
 ﻿using System.Net;
 using System.Reflection;
-using System.Text;
+using System.Text.Json;
 
 namespace AwsLambdaLocalServer
 {
@@ -11,12 +11,16 @@ namespace AwsLambdaLocalServer
         class ProcessRequestResult
         {
             public string funcName;
+            public string playerId;
+            public string payload;
             public bool isOk;
             public string errMsg;
 
-            public ProcessRequestResult(string funcName)
+            public ProcessRequestResult(string funcName, string playerId, string payload)
             {
                 this.funcName = funcName;
+                this.playerId = playerId;
+                this.payload = payload;
                 isOk = true;
             }
 
@@ -131,7 +135,42 @@ namespace AwsLambdaLocalServer
                 return new ProcessRequestResult("Can not found the function name in the request Url", false);
             }
 
-            return new ProcessRequestResult(funcName);
+            if (!request.HasEntityBody)
+            {
+                return new ProcessRequestResult("The request dont have body", false);
+            }
+
+            var dicBody = ParseRequestBody(request);
+            if (dicBody == null)
+            {
+                return new ProcessRequestResult("The request body is invalid", false);
+            }
+
+            if (!dicBody.ContainsKey("playerId") || !dicBody.ContainsKey("payload"))
+            {
+                return new ProcessRequestResult("The request body is missing parameters", false);
+            }
+
+            return new ProcessRequestResult(funcName, dicBody["playerId"], dicBody["payload"]);
+        }
+
+        static Dictionary<string, string> ParseRequestBody(HttpListenerRequest request)
+        {
+            using (var stream = request.InputStream)
+            {
+                using (var reader = new StreamReader(stream))
+                {
+                    var bodyTxt = reader.ReadToEnd();
+                    try
+                    {
+                        return JsonSerializer.Deserialize<Dictionary<string, string>>(bodyTxt);
+                    }
+                    catch
+                    {
+                        return null;
+                    }
+                }
+            }
         }
 
         static ExecuteFuncResult ExecuteFunc(ProcessRequestResult requestResult)
@@ -151,11 +190,9 @@ namespace AwsLambdaLocalServer
 
             try
             {
-                var playerId = "";
-                var input = "nam";
-                var context = CreateContextObj(playerId);
-                var task = (Task<string>)obj.GetType().InvokeMember(
-                    "Execute", BindingFlags.InvokeMethod, null, obj, new object[] { input, context });
+                var context = CreateContextObj(requestResult.playerId);
+                var task = (Task<string>)obj.GetType().InvokeMember("ExecuteByLocalServer", 
+                    BindingFlags.InvokeMethod, null, obj, new object[] { requestResult.payload, context });
                 task.Wait();
                 return new ExecuteFuncResult(task.Result);
             }
@@ -170,15 +207,13 @@ namespace AwsLambdaLocalServer
         static void ReturnResponse(HttpListenerResponse response, ExecuteFuncResult exeResult)
         {
             response.StatusCode = (int)exeResult.statusCode;
-
-            string resMsg = exeResult.GetMsg();
-            var resMsgAsBytes = Encoding.UTF8.GetBytes(resMsg);
-
-            response.ContentLength64 = resMsgAsBytes.Length;
-
-            var resStream = response.OutputStream;
-            resStream.Write(resMsgAsBytes, 0, resMsgAsBytes.Length);
-            resStream.Close();
+            using (var stream = response.OutputStream)
+            {
+                using (var writer = new StreamWriter(stream))
+                {
+                    writer.Write(exeResult.GetMsg());
+                }
+            }
         }
 
         #endregion
