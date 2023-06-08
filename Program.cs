@@ -151,9 +151,13 @@ namespace AwsLambdaLocalServer
 
             try
             {
-                var resultMsg = (string)obj.GetType().InvokeMember(
-                    "Execute", BindingFlags.InvokeMethod, null, obj, new object[] { "nam", null });
-                return new ExecuteFuncResult(resultMsg);
+                var playerId = "";
+                var input = "nam";
+                var context = CreateContextObj(playerId);
+                var task = (Task<string>)obj.GetType().InvokeMember(
+                    "Execute", BindingFlags.InvokeMethod, null, obj, new object[] { input, context });
+                task.Wait();
+                return new ExecuteFuncResult(task.Result);
             }
             catch
             {
@@ -180,6 +184,13 @@ namespace AwsLambdaLocalServer
         #endregion
 
         #region load dll
+
+        static object CreateContextObj(string playerId)
+        {
+            var type = funcDll.GetType("LocalServerContext");
+            var ctor = type.GetConstructor(new[] { typeof(string) });
+            return ctor.Invoke(new object[] { playerId });
+        }
 
         static object GetObjectWithType(string typeName)
         {
