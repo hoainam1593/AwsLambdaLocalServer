@@ -6,12 +6,32 @@ namespace AwsLambdaLocalServer
 {
     internal class Program
     {
+        class RequestInfo
+        {
+            public string funcName;
+            public bool isOk;
+            public string errMsg;
+
+            public RequestInfo(string funcName)
+            {
+                this.funcName = funcName;
+                isOk = true;
+            }
+
+            public RequestInfo(string errMsg, bool indicateErrorRequest)
+            {
+                this.errMsg = errMsg;
+                isOk = false;
+            }
+        }
+
         const string hostURL = "http://localhost:1993/";
         const string funcDllPathForTesting = "E:\\unity-projects\\project-8-server\\bin\\Release\\net6.0\\publish\\project-8-server.dll";
 
         static string funcDllPath;
         static string funcDllFolder;
         static Assembly funcDll;
+        static Dictionary<string, object> dicCacheFunc = new Dictionary<string, object>();
 
         static void Main(string[] args)
         {
@@ -45,16 +65,46 @@ namespace AwsLambdaLocalServer
                 else
                 {
                     Console.WriteLine($"there's a incoming request");
-                    ProcessRequest(context.Request, context.Response);
+                    var requestInfo = ProcessRequest(context.Request);
+                    ReturnResponse(context.Response, requestInfo);
                     Console.WriteLine($"done processing the request");
                 }
                 Console.Write("\n\n");
             }
         }
 
-        static void ProcessRequest(HttpListenerRequest request, HttpListenerResponse response)
+        //example of valid url:
+        //http://localhost:1993/function?name=TestFunction
+        static RequestInfo ProcessRequest(HttpListenerRequest request)
         {
-            var resMsg = "hello from server";
+            var path = request.Url.AbsolutePath.Trim('/', '\\');
+            if (!path.Equals("function"))
+            {
+                return new RequestInfo("The request Url is invalid", false);
+            }
+
+            var funcName = request.QueryString["name"];
+            if (string.IsNullOrEmpty(funcName))
+            {
+                return new RequestInfo("Can not found the function name in the request Url", false);
+            }
+
+            return new RequestInfo(funcName);
+        }
+
+        static void ReturnResponse(HttpListenerResponse response, RequestInfo requestInfo)
+        {
+            string resMsg;
+            if (!requestInfo.isOk)
+            {
+                response.StatusCode = (int)HttpStatusCode.BadRequest;
+                resMsg = requestInfo.errMsg;
+            }
+            else
+            {
+                resMsg = $"process function {requestInfo.funcName}";
+            }
+            
             var resMsgAsBytes = Encoding.UTF8.GetBytes(resMsg);
 
             response.ContentLength64 = resMsgAsBytes.Length;
