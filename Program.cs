@@ -6,22 +6,61 @@ namespace AwsLambdaLocalServer
 {
     internal class Program
     {
-        class RequestInfo
+        #region data members
+
+        class ProcessRequestResult
         {
             public string funcName;
             public bool isOk;
             public string errMsg;
 
-            public RequestInfo(string funcName)
+            public ProcessRequestResult(string funcName)
             {
                 this.funcName = funcName;
                 isOk = true;
             }
 
-            public RequestInfo(string errMsg, bool indicateErrorRequest)
+            public ProcessRequestResult(string errMsg, bool indicateErrorRequest)
             {
                 this.errMsg = errMsg;
                 isOk = false;
+            }
+        }
+
+        class ExecuteFuncResult
+        {
+            public string exeFuncResult;
+            public HttpStatusCode statusCode;
+            public string errMsg;
+
+            public ExecuteFuncResult(ProcessRequestResult requestResult)
+            {
+                statusCode = HttpStatusCode.BadRequest;
+                errMsg = requestResult.errMsg;
+            }
+
+            public ExecuteFuncResult(string exeFuncResult)
+            {
+                this.exeFuncResult = exeFuncResult;
+                statusCode = HttpStatusCode.OK;
+            }
+
+            public ExecuteFuncResult(string errMsg, HttpStatusCode statusCode)
+            {
+                this.statusCode = statusCode;
+                this.errMsg = errMsg;
+            }
+
+            public string GetMsg()
+            {
+                if (statusCode == HttpStatusCode.OK)
+                {
+                    return exeFuncResult;
+                }
+                else
+                {
+                    return errMsg;
+                }
             }
         }
 
@@ -32,6 +71,8 @@ namespace AwsLambdaLocalServer
         static string funcDllFolder;
         static Assembly funcDll;
         static Dictionary<string, object> dicCacheFunc = new Dictionary<string, object>();
+
+        #endregion
 
         static void Main(string[] args)
         {
@@ -65,8 +106,9 @@ namespace AwsLambdaLocalServer
                 else
                 {
                     Console.WriteLine($"there's a incoming request");
-                    var requestInfo = ProcessRequest(context.Request);
-                    ReturnResponse(context.Response, requestInfo);
+                    var requestResult = ProcessRequest(context.Request);
+                    var exeResult = ExecuteFunc(requestResult);
+                    ReturnResponse(context.Response, exeResult);
                     Console.WriteLine($"done processing the request");
                 }
                 Console.Write("\n\n");
@@ -75,36 +117,57 @@ namespace AwsLambdaLocalServer
 
         //example of valid url:
         //http://localhost:1993/function?name=TestFunction
-        static RequestInfo ProcessRequest(HttpListenerRequest request)
+        static ProcessRequestResult ProcessRequest(HttpListenerRequest request)
         {
             var path = request.Url.AbsolutePath.Trim('/', '\\');
             if (!path.Equals("function"))
             {
-                return new RequestInfo("The request Url is invalid", false);
+                return new ProcessRequestResult("The request Url is invalid", false);
             }
 
             var funcName = request.QueryString["name"];
             if (string.IsNullOrEmpty(funcName))
             {
-                return new RequestInfo("Can not found the function name in the request Url", false);
+                return new ProcessRequestResult("Can not found the function name in the request Url", false);
             }
 
-            return new RequestInfo(funcName);
+            return new ProcessRequestResult(funcName);
         }
 
-        static void ReturnResponse(HttpListenerResponse response, RequestInfo requestInfo)
+        static ExecuteFuncResult ExecuteFunc(ProcessRequestResult requestResult)
         {
-            string resMsg;
-            if (!requestInfo.isOk)
+            if (!requestResult.isOk)
             {
-                response.StatusCode = (int)HttpStatusCode.BadRequest;
-                resMsg = requestInfo.errMsg;
+                return new ExecuteFuncResult(requestResult);
             }
-            else
+
+            var obj = GetObjectWithType(requestResult.funcName);
+            if (obj == null)
             {
-                resMsg = $"process function {requestInfo.funcName}";
+                return new ExecuteFuncResult(
+                    $"function {requestResult.funcName} can not be found",
+                    HttpStatusCode.BadRequest);
             }
-            
+
+            try
+            {
+                var resultMsg = (string)obj.GetType().InvokeMember(
+                    "Execute", BindingFlags.InvokeMethod, null, obj, new object[] { "nam", null });
+                return new ExecuteFuncResult(resultMsg);
+            }
+            catch
+            {
+                return new ExecuteFuncResult(
+                    $"execution of function {requestResult.funcName} failed",
+                    HttpStatusCode.InternalServerError);
+            }
+        }
+
+        static void ReturnResponse(HttpListenerResponse response, ExecuteFuncResult exeResult)
+        {
+            response.StatusCode = (int)exeResult.statusCode;
+
+            string resMsg = exeResult.GetMsg();
             var resMsgAsBytes = Encoding.UTF8.GetBytes(resMsg);
 
             response.ContentLength64 = resMsgAsBytes.Length;
@@ -117,6 +180,24 @@ namespace AwsLambdaLocalServer
         #endregion
 
         #region load dll
+
+        static object GetObjectWithType(string typeName)
+        {
+            try
+            {
+                if (!dicCacheFunc.ContainsKey(typeName))
+                {
+                    var type = funcDll.GetType(typeName);
+                    var obj = Activator.CreateInstance(type);
+                    dicCacheFunc.Add(typeName, obj);
+                }
+                return dicCacheFunc[typeName];
+            }
+            catch
+            {
+                return null;
+            }
+        }
 
         static Assembly? OnAssemblyResolve(object? sender, ResolveEventArgs args)
         {
