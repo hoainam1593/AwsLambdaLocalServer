@@ -81,7 +81,7 @@ namespace AwsLambdaLocalServer
         static void Main(string[] args)
         {
             AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
-            LoadFuncDll();
+            LoadFuncDll(args);
             RunServer();
         }
 
@@ -252,9 +252,17 @@ namespace AwsLambdaLocalServer
             return Assembly.LoadFile(assemblyPath);
         }
 
-        static void LoadFuncDll()
+        static void LoadFuncDll(string[] args)
         {
-            funcDllPath = funcDllPathForTesting;
+            if (args == null || args.Length == 0)
+            {
+                funcDllPath = funcDllPathForTesting;
+            }
+            else
+            {
+                funcDllPath = Path.Combine(Directory.GetCurrentDirectory(), $"{args[0]}.dll");
+            }
+            
             funcDllFolder = Directory.GetParent(funcDllPath).FullName;
             funcDll = Assembly.LoadFile(funcDllPath);
         }
