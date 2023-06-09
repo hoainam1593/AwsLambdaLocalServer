@@ -194,10 +194,15 @@ namespace AwsLambdaLocalServer
                 task.Wait();
                 return ExecuteFuncResult.CreateSuccessObj(task.Result);
             }
-            catch
+            catch (AggregateException aggregateException)
             {
+                var e = aggregateException.InnerException;
+                var type = e.GetType().Name;
+                var msg = e.Message;
+                var stacktrace = e.StackTrace;
+
                 return ExecuteFuncResult.CreateFailObj(
-                    $"execution of function {requestResult.funcName} failed",
+                    $"execution of function {requestResult.funcName} failed\n{type}: {msg}\n{stacktrace}",
                     HttpStatusCode.InternalServerError);
             }
         }
