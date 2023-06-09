@@ -13,10 +13,12 @@ namespace AwsLambdaLocalServer
             public string funcName;
             public string playerId;
             public string payload;
+            public Dictionary<string, string> environmentVariables;
             public bool isOk;
             public string errMsg;
 
-            public static ProcessRequestResult CreateSuccessObj(string funcName, string playerId, string payload)
+            public static ProcessRequestResult CreateSuccessObj(string funcName, 
+                string playerId, string payload, Dictionary<string, string> environmentVariables)
             {
                 return new ProcessRequestResult()
                 {
@@ -24,6 +26,7 @@ namespace AwsLambdaLocalServer
                     funcName = funcName,
                     playerId = playerId,
                     payload = payload,
+                    environmentVariables = environmentVariables,
                 };
             }
 
@@ -144,12 +147,16 @@ namespace AwsLambdaLocalServer
                 return ProcessRequestResult.CreateFailObj("The request body is invalid");
             }
 
-            if (!dicBody.ContainsKey("playerId") || !dicBody.ContainsKey("payload"))
+            try
             {
-                return ProcessRequestResult.CreateFailObj("The request body is missing parameters");
+                var dicEnvs = JsonSerializer.Deserialize<Dictionary<string, string>>(dicBody["environmentVariables"]);
+                return ProcessRequestResult.CreateSuccessObj(funcName,
+                    dicBody["playerId"], dicBody["payload"], dicEnvs);
             }
-
-            return ProcessRequestResult.CreateSuccessObj(funcName, dicBody["playerId"], dicBody["payload"]);
+            catch
+            {
+                return ProcessRequestResult.CreateFailObj("The parameters of request body is invalid");
+            }
         }
 
         static Dictionary<string, string> ParseRequestBody(HttpListenerRequest request)
@@ -188,7 +195,7 @@ namespace AwsLambdaLocalServer
 
             try
             {
-                var context = CreateContextObj(requestResult.playerId);
+                var context = CreateContextObj(requestResult.playerId, requestResult.environmentVariables);
                 var task = (Task<string>)obj.GetType().InvokeMember("ExecuteByLocalServer", 
                     BindingFlags.InvokeMethod, null, obj, new object[] { requestResult.payload, context });
                 task.Wait();
@@ -223,11 +230,11 @@ namespace AwsLambdaLocalServer
 
         #region load dll
 
-        static object CreateContextObj(string playerId)
+        static object CreateContextObj(string playerId, Dictionary<string, string> envs)
         {
             var type = funcDll.GetType("LocalServerContext");
-            var ctor = type.GetConstructor(new[] { typeof(string) });
-            return ctor.Invoke(new object[] { playerId });
+            var ctor = type.GetConstructor(new[] { typeof(string), typeof(Dictionary<string, string>) });
+            return ctor.Invoke(new object[] { playerId, envs });
         }
 
         static object GetObjectWithType(string typeName)
