@@ -99,29 +99,21 @@ namespace AwsLambdaLocalServer
             listener.Prefixes.Add(hostURL);
             listener.Start();
 
+            Console.WriteLine("--- Lambda local server has been up and running ---");
+
             while (true)
             {
-                Console.WriteLine("=================================================");
-                Console.WriteLine("==       server is listening requests...       ==");
-                Console.WriteLine("=================================================");
                 var context = listener.GetContext();
 
                 //normally, a web browser will send 2 request:
                 // 1: actual request
                 // 2: a request used to get favicon i.e. a small icon of website
-                if (context.Request.Url.ToString().Contains("favicon.ico"))
+                if (!context.Request.Url.ToString().Contains("favicon.ico"))
                 {
-                    Console.WriteLine($"skipped trash request");
-                }
-                else
-                {
-                    Console.WriteLine($"there's a incoming request");
                     var requestResult = ProcessRequest(context.Request);
                     var exeResult = ExecuteFunc(requestResult);
                     ReturnResponse(context.Response, exeResult);
-                    Console.WriteLine($"done processing the request");
                 }
-                Console.Write("\n\n");
             }
         }
 
