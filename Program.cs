@@ -16,18 +16,24 @@ namespace AwsLambdaLocalServer
             public bool isOk;
             public string errMsg;
 
-            public ProcessRequestResult(string funcName, string playerId, string payload)
+            public static ProcessRequestResult CreateSuccessObj(string funcName, string playerId, string payload)
             {
-                this.funcName = funcName;
-                this.playerId = playerId;
-                this.payload = payload;
-                isOk = true;
+                return new ProcessRequestResult()
+                {
+                    isOk = true,
+                    funcName = funcName,
+                    playerId = playerId,
+                    payload = payload,
+                };
             }
 
-            public ProcessRequestResult(string errMsg, bool indicateErrorRequest)
+            public static ProcessRequestResult CreateFailObj(string errMsg)
             {
-                this.errMsg = errMsg;
-                isOk = false;
+                return new ProcessRequestResult()
+                {
+                    isOk = false,
+                    errMsg = errMsg,
+                };
             }
         }
 
@@ -37,22 +43,22 @@ namespace AwsLambdaLocalServer
             public HttpStatusCode statusCode;
             public string errMsg;
 
-            public ExecuteFuncResult(ProcessRequestResult requestResult)
+            public static ExecuteFuncResult CreateSuccessObj(string exeFuncResult)
             {
-                statusCode = HttpStatusCode.BadRequest;
-                errMsg = requestResult.errMsg;
+                return new ExecuteFuncResult()
+                {
+                    statusCode = HttpStatusCode.OK,
+                    exeFuncResult = exeFuncResult,
+                };
             }
 
-            public ExecuteFuncResult(string exeFuncResult)
+            public static ExecuteFuncResult CreateFailObj(string errMsg, HttpStatusCode statusCode)
             {
-                this.exeFuncResult = exeFuncResult;
-                statusCode = HttpStatusCode.OK;
-            }
-
-            public ExecuteFuncResult(string errMsg, HttpStatusCode statusCode)
-            {
-                this.statusCode = statusCode;
-                this.errMsg = errMsg;
+                return new ExecuteFuncResult()
+                {
+                    statusCode = statusCode,
+                    errMsg = errMsg,
+                };
             }
 
             public string GetMsg()
@@ -126,32 +132,32 @@ namespace AwsLambdaLocalServer
             var path = request.Url.AbsolutePath.Trim('/', '\\');
             if (!path.Equals("function"))
             {
-                return new ProcessRequestResult("The request Url is invalid", false);
+                return ProcessRequestResult.CreateFailObj("The request Url is invalid");
             }
 
             var funcName = request.QueryString["name"];
             if (string.IsNullOrEmpty(funcName))
             {
-                return new ProcessRequestResult("Can not found the function name in the request Url", false);
+                return ProcessRequestResult.CreateFailObj("Can not found the function name in the request Url");
             }
 
             if (!request.HasEntityBody)
             {
-                return new ProcessRequestResult("The request dont have body", false);
+                return ProcessRequestResult.CreateFailObj("The request dont have body");
             }
 
             var dicBody = ParseRequestBody(request);
             if (dicBody == null)
             {
-                return new ProcessRequestResult("The request body is invalid", false);
+                return ProcessRequestResult.CreateFailObj("The request body is invalid");
             }
 
             if (!dicBody.ContainsKey("playerId") || !dicBody.ContainsKey("payload"))
             {
-                return new ProcessRequestResult("The request body is missing parameters", false);
+                return ProcessRequestResult.CreateFailObj("The request body is missing parameters");
             }
 
-            return new ProcessRequestResult(funcName, dicBody["playerId"], dicBody["payload"]);
+            return ProcessRequestResult.CreateSuccessObj(funcName, dicBody["playerId"], dicBody["payload"]);
         }
 
         static Dictionary<string, string> ParseRequestBody(HttpListenerRequest request)
@@ -177,13 +183,13 @@ namespace AwsLambdaLocalServer
         {
             if (!requestResult.isOk)
             {
-                return new ExecuteFuncResult(requestResult);
+                return ExecuteFuncResult.CreateFailObj(requestResult.errMsg, HttpStatusCode.BadRequest);
             }
 
             var obj = GetObjectWithType(requestResult.funcName);
             if (obj == null)
             {
-                return new ExecuteFuncResult(
+                return ExecuteFuncResult.CreateFailObj(
                     $"function {requestResult.funcName} can not be found",
                     HttpStatusCode.BadRequest);
             }
@@ -194,11 +200,11 @@ namespace AwsLambdaLocalServer
                 var task = (Task<string>)obj.GetType().InvokeMember("ExecuteByLocalServer", 
                     BindingFlags.InvokeMethod, null, obj, new object[] { requestResult.payload, context });
                 task.Wait();
-                return new ExecuteFuncResult(task.Result);
+                return ExecuteFuncResult.CreateSuccessObj(task.Result);
             }
             catch
             {
-                return new ExecuteFuncResult(
+                return ExecuteFuncResult.CreateFailObj(
                     $"execution of function {requestResult.funcName} failed",
                     HttpStatusCode.InternalServerError);
             }
