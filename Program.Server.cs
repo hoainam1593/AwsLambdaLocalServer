@@ -111,11 +111,9 @@ public partial class Program
 
         try
         {
-            var context = CreateContextObj(requestResult.playerId, requestResult.environmentVariables);
-            var task = (Task<string>)obj.GetType().InvokeMember("ExecuteByLocalServer",
-                BindingFlags.InvokeMethod, null, obj, new object[] { requestResult.payload, context });
-            task.Wait();
-            return ExecuteFuncResult.CreateSuccessObj(task.Result);
+            SetEnvironmentVariables(requestResult.environmentVariables);
+            var executeFuncResult = RunFuncExecute(requestResult, obj);
+            return ExecuteFuncResult.CreateSuccessObj(executeFuncResult);
         }
         catch (AggregateException aggregateException)
         {
@@ -128,6 +126,28 @@ public partial class Program
                 $"execution of function {requestResult.funcName} failed\n{type}: {msg}\n{stacktrace}",
                 HttpStatusCode.InternalServerError);
         }
+    }
+
+    static void SetEnvironmentVariables(Dictionary<string, string> dic)
+    {
+        var type = funcDll.GetType("EnvironmentVariables");
+        type.InvokeMember("SetDicVariables", BindingFlags.InvokeMethod, null, null,
+            new object[] { dic });
+    }
+
+    static string RunFuncExecute(ProcessRequestResult requestResult, object funcObj)
+    {
+        var context = CreateContextObj(requestResult.playerId);
+        var func = funcObj.GetType().GetMethod("Execute");
+
+        var paramInfo = func.GetParameters()[0];
+        var param = JsonSerializer.Deserialize(requestResult.payload, paramInfo.ParameterType);
+
+        var task = (Task)func.Invoke(funcObj, new object[] { param, context });
+        task.Wait();
+
+        var resultTask = task.GetType().GetProperty("Result", BindingFlags.Instance | BindingFlags.Public);
+        return JsonSerializer.Serialize(resultTask.GetValue(task));
     }
 
     #endregion

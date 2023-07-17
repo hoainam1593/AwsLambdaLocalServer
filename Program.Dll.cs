@@ -30,11 +30,11 @@ public partial class Program
         funcDll = Assembly.LoadFile(funcDllPath);
     }
 
-    static object CreateContextObj(string playerId, Dictionary<string, string> envs)
+    static object CreateContextObj(string playerId)
     {
         var type = funcDll.GetType("LocalServerContext");
-        var ctor = type.GetConstructor(new[] { typeof(string), typeof(Dictionary<string, string>) });
-        return ctor.Invoke(new object[] { playerId, envs });
+        var ctor = type.GetConstructor(new[] { typeof(string) });
+        return ctor.Invoke(new object[] { playerId });
     }
 
     static object GetFuncObj(string typeName)
