@@ -1,6 +1,6 @@
 ﻿using System.Net;
 using System.Reflection;
-using System.Text.Json;
+using Newtonsoft.Json;
 
 public partial class Program
 {
@@ -61,7 +61,7 @@ public partial class Program
 
         try
         {
-            var dicEnvs = JsonSerializer.Deserialize<Dictionary<string, string>>(dicBody["environmentVariables"]);
+            var dicEnvs = JsonConvert.DeserializeObject<Dictionary<string, string>>(dicBody["environmentVariables"]);
             return ProcessRequestResult.CreateSuccessObj(funcName,
                 dicBody["playerId"], dicBody["payload"], dicEnvs);
         }
@@ -80,7 +80,7 @@ public partial class Program
                 var bodyTxt = reader.ReadToEnd();
                 try
                 {
-                    return JsonSerializer.Deserialize<Dictionary<string, string>>(bodyTxt);
+                    return JsonConvert.DeserializeObject<Dictionary<string, string>>(bodyTxt);
                 }
                 catch
                 {
@@ -141,13 +141,13 @@ public partial class Program
         var func = funcObj.GetType().GetMethod("Execute");
 
         var paramInfo = func.GetParameters()[0];
-        var param = JsonSerializer.Deserialize(requestResult.payload, paramInfo.ParameterType);
+        var param = JsonConvert.DeserializeObject(requestResult.payload, paramInfo.ParameterType);
 
         var task = (Task)func.Invoke(funcObj, new object[] { param, context });
         task.Wait();
 
         var resultTask = task.GetType().GetProperty("Result", BindingFlags.Instance | BindingFlags.Public);
-        return JsonSerializer.Serialize(resultTask.GetValue(task));
+        return JsonConvert.SerializeObject(resultTask.GetValue(task));
     }
 
     #endregion
